@@ -1,0 +1,173 @@
+                         NOISE.SYS Revision History
+
+Versions 0.6.2-0.6.3:
+
+        The 'stirfile' utility has been removed from the distribution,
+         since it is no longer necessary.
+        Fixed bug with 'copy random$ file' in MS-DOS 7 (?).
+        Fixed bug with status-checking in RDevRead() procedure.
+        Added __Sample21 define as an alternative to sampling Int 13h
+          under MS-DOS 7/Win95.
+        Fixed a bug in demo\stirfile.c
+        Checks for mouse installation when parsing the /m option, not
+          later; prints an error message if mouse not installed.
+        Prints a different error message if /d given when DosVersion
+          is invalid.
+        Fixed typo in usage screen.
+        More added to the documentation and technotes.
+        Samples can now be added by writing to the RANDOM$ and URANDOM$
+          device (see "technote.doc" for more info).
+        Added __UseTSC define for (potential) Pentium optimizations w/out
+          using Pentium TSC.  It's also possible to use TSC for some 486s
+          that support it.
+        Testing for i486, i586 and TSC in "cpuid.inc".
+        Assorted optimizations.
+        Removed experimental subfunction (19h) from API, since there seems
+          to be an incompatability with Win95.
+        __MixOutTicks commented out, since it produced poor results even
+          when the Pentium TSC was used.
+        Disabled __SamplMouse and __DosSpinner.
+        Responds to the Windows "Identify TSR" callout.
+
+Versions 0.5.7b-0.6.1:
+        
+        32-bit samples are used from TSC when run on i586 machine.
+        Added WIN95 define in source for optimizations (incomplete).
+        Experimental code for using STAT.386 while in Windows (incomplete).
+          [Code has been commented out for now.]
+        Some compilation options (DEBUG, CPU={3,4,5)} can now be specified
+          from make (ie, "make -DCPU=4").
+        More documentation (re)writing.
+        If DosVersion >= 7 (MS-DOS 7, Win95 or OS/2), the /d option is
+          disabled and Int 13h is not hooked.
+        Added /o option to ignore DosVersion in the above case.
+        Uncommented rInitDevice() for RANDOM$ device so that driver can be
+          loaded under MS-DOS 7 and Windows-95.
+        Added more subfunctions to the API.
+        Far call hook to the driver ignores the function value in AH reg.
+        Minor change in RDevRead() function when wiping earlier data.
+        Minor optimizations in Int 2Fh handler, CD-ROM sampling.
+        Changed SampleTimerWord macro to use ax and dx registers (Pentium
+          rdtsc friendly?).
+        Fixed a bug in Int 21h hook when __SamplExec == 0.
+        Added sampling of DOS commit()/flush() timings.
+        Fixed minor bug in the "sample.c" program.
+
+Version 0.5.7 (distributed as a patch to 0.5.6):
+
+        Changed device names to "RANDOM$" and "URANDOM$", because DOS is
+          lame when differentiating between files and character devices.
+
+Versions 0.5-0.5.6:
+
+        Minor code optimizations of ibm_isp macro; "fast shift" bug, etc.
+        Driver reset routine added (disabled until bugs are fixed).
+        Some tables were moved into the IO Control Out area.
+        Fixed a bug in the API's @ReturnErr routine.
+        The output pool can be configured at compilation time to not use
+          a tap sequence, allowing arbitrarily large pool sizes.
+        The API somewhat conforms to the Alternate Multiplex Interrupt
+          Specification (AMIS), although it uses Int 32h instead of 2Dh.
+        Removed the Zobrist-like hashing for entropy estimation, since it
+          tended to 'randomize' the hashes.  Replaced hash with an xor-
+          checksum of the last N samples, which appears to give better
+          results when fed cyclic data.
+        Fixed a bug in the hash/checksum indexNtable handling (the array
+          was treated as bytes rather than words!).
+        Fixed a bug in the entropy estimation (the counter delta was not
+          being used): the estimates should be more conservative now.
+        A __MixAtTicks option exists in the source which mixes in a sample
+          from the timer every SamplePeriod ticks, shuffling the random pool
+          without counting the sample as added entropy.
+        A __FULLHASH option exists in the source which requires the
+          driver to gather 512 bits of entropy before hashing.
+        Interrupt hooks redone to conform with the IBM Interrupt Sharing
+          Protocol.
+        The driver will not return reads from /dev/random if more than one
+          process is using it.
+        Removed IOCTL Write function; replaced by an entirely rewritten
+          API through IOCTL Reads and Interrupt calls.
+        Source define allows /dev/rand alias for /dev/random.
+        Updated a few feautres in the SAMPLE.COM utility.
+        Optimized the entropy estimation code, fixed a bug where the value
+          of bp was added to the pool if ax had no entropy.
+        Overhauled the source code and documentation to reflect changes.
+        Added VGA vsync/retrace interval sampling method (experimental).
+        Removed the <Alt> key abort installation, since it didn't work
+          properly.
+        A larger output pool is maintained of the "fresh" bits so that
+          calls to /dev/random can return more bytes.
+        Hashing order N no longer needs to be a power of two.
+        Removed flush() from devices (not really necessary).
+        Removed top-off option (/k) and fillwithnoise() routine.
+        Fixed bug in DEVLOD patch (drivers with more than two devices can
+          now be loaded?).
+        Added sampling of timer when entering/exiting Windows.  Removed
+          sampling of Windows message (wm_XXXX) boradcasts.
+        Removed "mixing" of delta value in TrackDeltas routine.
+        Added a "spinner" on calls to interrupts 21h and 2Fh.
+        Rewrote CPU drift sampling method entirely.
+        Added sampling before and after calls to the DOS exec() function.
+        Fixed a possible bug where negative values added to the entropy
+          pool were treated as positive (?).
+        Changed mouse sampling to calculate changes in position rather
+          than get these from the mouse driver. Timings between button
+          presses are also sampled.
+        Added option (in source) to sample the mouse during timer ticks
+          rather than DOS idle.
+        Made disk access sampling an option (/d) since it gathers no useful
+          entropy if loaded *after* a disk caching utility is loaded.
+        Changed __Sample08 hook to Int 1Ch, which is still called while in
+          Windows(?). Made the handler more flexible.
+        Added code to sample low-level access of CD-ROM (untested).
+        Many changes to installation messages.  Info about sampling methods
+          is displayed.  Driver waits for a keypress if a bad option is
+          given.
+        Removed __SamplKeys latch.
+
+Versions 0.4.2-0.4.9:
+
+        Rewrote the documentation somewhat.
+        Added more information to the IOCTL Read function.
+        Changed references of the algorithm from SHA-2 to SHA-1 to conform
+          to FIPS PUB 180-1.
+        Changed Sample, TrackDelta, and Accumulate PROCs to LABELs to remove
+          any confusion that they are supposed to run into each other (w/out
+          "ret" instructions); also prevents some assemblers from possibly
+          adding a stack frame where one shouldn't be.
+        Added IOCTL Read function to get information about the driver's
+          settings and status; also added IOCTL Write function to set the
+          driver's flags or add samples to the entropy pool.
+	Fixed end-of-line bug when loaded in OS/2 DOS session.
+	The driver displays more information about itself when loaded.
+        Removed the __Sample33 define, since programs which rely on it
+	  to poll the mouse usually call it continuously, returning very
+	  low entropy per call.
+	The driver is capable of tracking fractional bits of entropy.
+	The method of entropy estimation method	is now based on	when a
+	  given	sample probably	last occurred, as opposed to how large
+	  the sample is	compared to the	last sample.
+	Cleaned	up trailing trailing spaces and	other garbage from source
+	  code files.
+        Interrupt hooks use pushad/popad (prevents some future bugs?).
+        Fixed bug with Int 13h handler which did not return flags properly.
+	Fixed bug in CPU testing routine (installation was not aborted).
+	Keystroke initialization runs until entropy reaches a set value
+	  rather than counting keystrokes.  Also adds scan codes to the
+	  pool for additional noise.
+	Save/restore registers during DOS idle (fixed some nasty bugs).
+	Rewrote	much of	the code in the	initialization function.
+	The initialization function uses a mini-printf() function for more
+	  flexible messages. This doesn't affect the installed driver.
+	Sections of the	source-code were made into includes for	easier
+	  management/egibility.
+	Fixed minor bug	in makefile.
+	Moved some defines inside the macros to	make the code legible.
+	Disabled drift sampler in Int 28 while in Windows (it caused
+	  problems with	WinSock).
+	Wrote smarter code to test if Windows is active.
+	Added patch for	DRVLOAD	utility.
+
+Revision history from earlier versions omitted because they were largely
+outdated.
+

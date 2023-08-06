@@ -1,0 +1,798 @@
+
+
+                                   NOISE.SYS
+
+                              (Version 0.6.3-Beta)
+
+                                Technical Notes
+
+
+                     Copyright (C)1996. All Rights Reserved.
+
+
+Warning: This file is still under construction. A detailed explanation of
+        the driver's innards is forthcoming...  If you have any questions
+        please E-mail me at <wlkngowl@unix.asb.com>
+
+        List of Ingredients:
+
+        Using the driver from appliations
+          Detecting the driver
+        A discussion of the driver's innards
+        Notes on the sampling methods and sources of entropy
+        Notes about modifying the driver
+        NOISE.SYS API (Version 0.5.3 and later)
+        Unsorted References 
+
+
+        Using the driver from applications
+--------------------------------------------------------------------------
+        See also the Appendix on the NOISE.SYS API at the end of this
+        document.
+
+        For most applications, simply reading from the device (in binary
+        mode) should be adequate.  The procedure for identifying the
+        presence of the driver follows:
+
+          1a. If the application allows a user-specified configuration,
+              (driver name, interrupts/ports, etc.) use that, otherwise
+           b. Check the RNG_DEVICE environment variable (it should be set
+              to the name of the /dev/random or random$ device).
+
+              This allows users to use other drivers or devices with
+              other names.
+
+          2.  If no RNG device is defined, check for the presence of the
+              driver by opening the \DEV\RANDOM$ file.  (Optional: if this
+              fails, check for the \DEV\RANDOM device from older versions
+              of NOISE.SYS)
+
+              Unix ports of software should use the /dev/random device.
+
+              If the URANDOM$ device is desired, you may check for that
+              instead, ignoring step 1b.
+
+        Remember: open the file in binary mode!
+
+        If the device is to be used for low-security applications (ie,
+        simulations) then the only other processing one will have to do
+        is to convert bytes to other data formats as needed (see below).
+        Bytes from /dev/urandom (URANDOM$) should be adequate for this
+        purpose.
+
+        For crypto and other security-related applications, it is good
+        practice to feed the bytes returned by the driver into a hash or
+        cipher.
+
+        TSRs or device drivers should use the API (see below).
+
+        Samples from other sources can be sent to the driver by writing
+        to the RANDOM$ and URANDOM$ devices (Version 0.6.2 or later).
+        Characters written to either device will be treated as 8-bit
+        samples.  (16-bit samples can be added using the API.)
+
+        The relative entropy of characters written to the RANDOM$ device
+        will be tracked (affecting the output of the device); writes to
+        the URANDOM$ device will only be mixed into the entropy pool,
+        with no entropy tracking.
+
+        Some builds of the driver may disable this feature (turning the
+        device into a bit bucket) out out of security concerns (see notes
+        about modifying the driver, below).
+
+        [Under construction]
+
+
+        A discussion of the driver's innards
+--------------------------------------------------------------------------
+        Installation
+
+        The driver first checks the CPU type (see the "cpuid.inc" file).
+        If the processor is not at least a 386, installation is aborted.
+        If the driver is built for a later processor (__CPU >= 4), then
+        a further check is made for 486 or Pentium processors.
+
+        If the driver is built for Pentiums, or with Timestamp Counter
+        (TSC) sampling set (allegedly some 486s support the "rdtsc"
+        instruction), the driver checks for the "cpuid" instruction.
+        If there is none, or if it returns a value < __CPU, the driver
+        aborts.  If it is built for TSC sampling, the presence of a
+        Timestamp Counter is also checked.
+
+        The driver than checks the DOS version and whether Windows is
+        already active (later versions may also check for OS/2, VMiX,
+        DesqView, and other multitaskers) and sets internal flags
+        accordingly.
+
+        Options are parsed.  If an option is disabled in a build, it
+        will return an appropriate message (the /d option is disabled
+        if DosVerion >= 7).  Appropriate installation checks are done
+        when an option is parsed (ie, if /m selected, check whether
+        the mouse is installed).
+
+        Interrupts are then hooked and messages displayed.  If the /i
+        option is given, the driver will ask for enough keystrokes to
+        "seed" the random pool.
+
+        Operation
+
+        Once the driver is installed, it begins to gather samples (See the
+        discussion of various methods of accumulating entropy below) from
+        entropy sources in the system.  Each sample is passed to the
+        TrackDelatas() function, where an estimate of its entropy (in
+        relation to all other samples) is made, and then the Accumulate()
+        function which mixes the samples into an entropy pool.
+
+        All entropy sources are treated the same in terms of estimation.
+        That is, the driver does not differentiate between a measurement
+        from keyboard timings and disk access, for example.  In part it
+        is because though separate methods may have a relatively high
+        amount of entropy, treating them as distinct with regards to
+        entropy measurements may miss correlations.
+
+        Note that information entropy is an abstract concept, so there
+        is no way to measure real entropy.  Hence the driver makes an
+        estimate akin to a lossy-compression of the samples.
+
+        The TrackDeltas() and CalcEntropy() functions:
+
+        The relative entropy of the sample is estimated by calculating the
+        checksum of the differences from previous samples (or deltas) and
+        looking up when that checksum last occurred in a table.
+
+        The sample is assumed to have log2(LastSeen) - log2(N) bits, where
+        N is the number of previous samples used for the checksum.  If the
+        "LastSeen" value is less than N, the sample is assumed to have no
+        entropy.
+
+        A psuedo-C outline of the entropy estimation algorithm:
+
+          #define N 6           // last N samples used in the checksum
+          #define TABLESIZE 512 // size of lastSeen table (power of 2)
+
+          unsigned int TrackDeltas(int sample)
+          {
+            int last=0, delta, tmp,
+                hash=0, lastNtable[N], indexNtable=0,
+                c, diff, counter=0, lastSeen[ TABLESIZE ];
+
+            delta = abs( sample - last ); // get delta
+            last = sample;
+
+            hash^ = delta;                // get checksum of last N deltas
+            tmp = delta; delta = lastNtable[ indexNtable ];
+              lastNtable[ indexNtable ] = tmp;
+            hash ^= delta;
+            indexNtable = (indexNtable+1) % N;
+
+            c = counter; ++counter;       // when did checksum last occur
+            tmp = c; c = lastSeen[ hash % TABLESIZE ];
+              lastSeen[ hash % TABLESIZE ] = tmp;
+            diff = abs( lastSeen[ hash % TABLESIZE ] - c);
+
+            if (diff<=N) return (0);
+            else return (log2(diff) - log2(N));
+          }
+
+        An xor-based checksum is used over other hashing methods because
+        repetative or cyclical samples generally map to the same value,
+        resulting in lower (more conservative) entropy estimates.
+
+        The value of N (lastNsamples) may not be optimal; it may also be
+        that odd values of N are better: more testing needs to be done
+        here.  Note that if N is too large, smaller sample cycles will
+        not be noticed.
+
+        Only 512 or 1024 table entries are used because of memory limits,
+        however this allows the driver to under-estimate entropy and be
+        a bit conservative as well.
+
+        The entropy estimate will calculate fractional entropy bits if
+        FRACBITS is nonzero.  The default value is FRACBITS=4 (16ths of
+        a bit).
+
+        If the random pool is full (ie, the entropy is estimated to be
+        at least 512 bits) then the driver will skip entropy estimation
+        for that sample.
+
+        Note that the entropy estimation methods used for some older
+        versions of NOISE.SYS (as well as /dev/random implementations
+        for other operating systems) may be different.
+
+        The MixOutQueue() and Accumulate() functions:
+
+        If an output pool is used, then whenever the entropy estimate hits
+        a threshold (set as QualityThreshold in the "noise.def" file) bytes
+        are read from the pool [See the Read() function below] into an
+        output buffer using a mixing function similar to the one used in
+        the Accumulate() function, (although the actual function used
+        will depend on the OutTaps set in the "noise.def" file, POOLSIZE
+        and other compilation options).
+
+        In psuedo-C...
+
+          #define POOLSIZE 128
+          #define OutTap1 7
+          #define OutTap2 9
+          #define OutTap3 31
+          #define OutTap4 59
+          #define OutTap5 99
+          #define OutTap6 128              // OutTap6 == POOLSIZE
+
+          void MixOutQueue(unsigned long x)
+          // x is a 32-bit word read from a hash of the random pool
+          {
+            int i=0;
+            unsigned long outPool[ POOLSIZE ];
+
+          #define __NOHASHOUT 0
+          #if (__NOHASHOUT)                // allows arbitrary POOLSIZEs
+            i = (i+1) % POOLSIZE;
+            outPool[i] = (outPool[i] <<< 7) ^ x;
+          #else                            // default setting
+            i = (i+1) & (OutTap6-1);
+            x ^= outPool[i-OutTap1 & (OutTap6-1)] ^
+                 outPool[i-OutTap2 & (OutTap6-1)] ^
+                 outPool[i-OutTap3 & (OutTap6-1)] ^
+                 outPool[i-OutTap4 & (OutTap6-1)] ^
+                 outPool[i-OutTap5 & (OutTap6-1)];
+            outPool[i] ^= (x <<< 7);
+          #endif            
+          }
+
+        The default is a 128-double-word (512 byte) output pool which uses
+        a tap sequence for mixing.
+
+        When __NOHASHOUT is set to 1, arbitrary pool sizes can be used,
+        and the code for mixing is smaller.  Note that larger output pool
+        sizes require more samples for mixing.
+
+        The original sample is then accumulated in the entropy pool by
+        mixing it with other samples in the pool.  All samples are added
+        to the pool, irregardless of the entropy estimate.  The mixing
+        function is allows samples to be added to the pool in a way that
+        maintains high-quality entropy.
+
+        The Accumulate() function is similar to the MixOutQueue() function,
+        although it uses four taps and 32 16-bit words.  An explanation is
+        in the source code's comments.
+
+        The Read() function:
+
+        When bytes are read from the pool (either to transfer them to the
+        output pool or for an application requesting random bytes) the
+        driver hashes the entropy pool using the Secure Hash Algorithm
+        (SHA-1) and returns the message digest.  The digest bytes are
+        them re-accumulated into the pool and then re-initialized to the
+        SHA initial values.
+
+        The Accumulate() function and SHA-1 hashing should deskew any
+        bias in the samples.
+
+        See the FIPS PUB 180-1 document for more information on the SHA-1
+        transform function.
+
+        Reads from /dev/urandom, or DevRead() [the URANDOM$ device], work
+        as explained above.
+
+        Reads from /dev/random, or RDevRead() [the RANDOM$ device] will
+        return bytes from the output queue (or if none is used, the driver
+        will only return bytes from /dev/urandom based on the entropy
+        estimation).  The OutPut[] bytes are wiped as they are read,
+        although you may wish to change this for futher entropy mixing if
+        you are not worried about a possible security hole (See notes
+        about modifying the driver below).
+
+        DevWrite() and RDevWrite() functions:
+
+        Both of these functions will add characters (8-bit samples) to
+        the entropy pool (the high-byte is set to zero).  DevWrite()
+        adds samples using the Accumulate() function, while RDevWrite()
+        adds samples using the TrackDeltas() function.
+
+        It is possible that the driver may be built with __AllowAddAPI
+        set to 0, turning these methods into bit-buckets.
+
+        Notes on the sampling methods and sources of entropy
+--------------------------------------------------------------------------
+        Most of the noise values come from fast timings of the 840ns
+        timer (or from the Timestamp Counter for versions built with
+        the TSC option) between various system events (keystrokes,
+        disk access, etc.).
+
+        An alternate implementation might use a "spinner" or counter
+        that is incremented for each event.  The counters could then
+        be sampled every clock tick.  For source events where the
+        timings are usually very low this may be a better method of
+        sampling entropy.  (The current version of NOISE.SYS does not
+        implement this.)
+
+
+        [Under construction]
+
+
+        Notes about modifying the driver
+--------------------------------------------------------------------------
+        The source code is reasonably commented, to make up for anything
+        left out or glossed over in this document.  Please read the notes
+        about the driver's innards and the sampling methods above before
+        making any significant changes to the driver's functions.
+
+        If you find something that you are unsure about, or believe to
+        be buggy, inefficient or insecure, feel free to email me about it.
+
+
+        Note that older versions of unzip, make, tasm, etc. may cough up
+        on the longer filenames, esp. if shorter variants are given when
+        using Win95 or OS/2.
+
+
+        You can specify the following defines using make:
+
+                -DWIN95                 Use Win3/Win95-friendly code.
+                                        (Incomplete implementation.)
+
+                -DCPU=3                 For i386 machines, default.
+                -DCPU=4                 For i486 machines.
+                -DCPU=5                 For i586 machines.
+
+                -DTSC                   Use "rdtsc" instruction rather than
+                                        timer 0 (some i486, or for i586).
+
+                -DDEBUG                 For debugging/testing only.
+                -DLIST                  Generate a "noise.lst" file.
+
+                -DEXE                   Create an EXE-format driver.
+
+        For example, you can use "make -DCPU=5 -DTSC -DLIST".
+
+
+        Bugbears (see the "bugs.txt" file for other warnings):
+
+        The driver may cause problems under Windows 95.  Unfortunetly
+        some of these problems, associated with rebuilding the driver
+        with different options, were not consistent: a sign that there
+        is either a subtle bug with the driver or with Windows 95.
+
+        Setting the SamplePeriod (if __Sample08 != 0) to a value other
+        than 1 has caused problems under Win95 sometimes.
+
+        Using the driver with the -DTSC option, which uses the CPU
+        Timestamp Counter, will conflict with most protected mode
+        programs (especially under Windows Enhanced Mode or '95, OS/2,
+        etc.)
+
+
+        Most of the defines and options are set in the "noise.def" file.
+
+        Take note of any warnings marked with a "(!)" in the source. This
+        signifies that care should be taken when changing those routines,
+        because of optimizations or sensitive values in the code.
+
+        It's proved helpful to use a Revision Control System when
+        developing the driver: if you intend to do a lot of experimenting
+        and hacking with NOISE.SYS, this is a recommended tool to use.
+
+
+        Some loose conventions are used in the source. Hooks to interrupts
+        are defined as __SampleXX (where XX is the interrupt number, in
+        hexidecimal).  Methods which are not tied to a specific interrupt
+        are named __SamplXXXXX, such as __SamplMouse or __SamplVideo.
+
+        There are some sampling methods that are disabled (defined as 0)
+        in the source, either because they are untested or because the
+        quality of entropy is suspect.
+
+        The __CPU value defines the processor that the driver is coded
+        for.  The default value is 3 (for i386).  There are some minor
+        optimizations for i486 and i586 processors as well (most are
+        largely unimplemented, since at this point it does not seem an
+        important issue).
+
+        Throughout various places in the source are "if 0" or "if 1"
+        defines, with comments explaining the differences, and why some
+        portions are enabled or disabled.  See the RDevRead() function
+        as one example.
+
+        [Under construction]
+
+
+        NOISE.SYS API (Version 0.5.3 and later)
+--------------------------------------------------------------------------
+        For now NOISE.SYS uses Interrupt 32h for the API.  If no conflicts
+        with other programs arise, this will not change.  The AMIS specif-
+        ication was chosen so that a move to Int 2Dh is easier, if it seems
+        necessary... but it also allows developers of other TSRs or drivers
+        to use Int 32h if they adhere to the AMIS spec.  (Ralf Brown's
+        Interrupt List as of no. 50 lists Int 32h as having "no special
+        use".)
+
+
+        An IOCTL (IO-Control) read from the /dev/random device will return
+        the following record:
+
+          Offset        Size    Description
+
+           0            2       szControlOut    Size of control record
+           2            4       IdTag == 6E6F697Ah Identifier Tag = 'noiz'
+           6            2       Version
+           8            1       Interrupt       (00h if none)
+           9            1       Function        (in AH register)
+          10            4       Far call entry  (00000000h if none)
+          14            ?       UNDEFINED
+
+        Other fields may be defined in the source code, but they are subject
+        to changes in future versions.
+
+        Note that the Id Tag differs from earlier versions (pre-0.5.3)
+        because the API is not backward compatible.  Earlier versions
+        of the API (using IOCTL writes) will not be supported.
+
+        Default values for Interrupt and Function are 32h and 6Eh.
+
+        The API is presented in a format similar to Ralf Brown's Interrupt
+        Listings:
+
+----------326E-------------------------------
+INT 32 - NOISE.SYS Version 0.5.3+ API
+        AH = 6Eh ('n') (function id)
+        AL = subfunction (See INT 32/AX=6E00h)
+Return: CF set on error
+           AL = error codes returned by the API
+                00h = subfunction not supported
+                FBh = random pool is empty
+                FCh = quality of sample to too low
+                FDh = too many processes using the API or driver
+                FEh = subfunction is disabled in the current build
+                FFh = ok
+	CF clear if successful
+Notes: INT 32 is only a proposed interface for NOISE.SYS. Use the controller
+        read (IOCTL READ) from the RANDOM device to determine the interrupt
+        and function Id used by the driver, since future versions may use the
+        Alternate Multiplex Interrupt Service (AMIS) at Int 2Dh.
+
+       The device reset routine for NOISE.SYS (Version 0.5.6+), if defined,
+        will preceed the INT 32 hook.
+
+       Assume that unspecified registers (other than DS:SI) may be trashed.
+
+       NOISE.SYS Version 0.5.5 has a bug that caused it to crash when an
+        error was returned by the API.
+SeeAlso: INT 2D/AMIS
+----------326E00-----------------------------
+INT 32 - NOISE.SYS - INSTALLATION CHECK
+        AH = 6Eh
+        AL = 00h
+Return:
+        AL = installation status
+                00h = not installed
+                FFh = installed
+        CX = Version (ie, 0123h = Version 1.2.3)
+        DX:DI -> AMIS signature string
+----------326E01-----------------------------
+INT 32 - NOISE.SYS - GET PRIVATE API ENTRY POINT
+        AH = 6Eh
+        AL = 01h
+Return:
+        AL = entry point status
+                00h = no entry point
+                FFh = entry point present in DX:BX
+        DX:BX -> far call entry point to API
+----------326E02-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 02h and 03h
+Return:
+        AL = 00h
+----------326E04-----------------------------
+INT 32 - NOISE.SYS - GET INTERRUPT HOOK LIST
+        AH = 6Eh
+        AL = 04h
+        BL = ignored
+Return:
+        AL = status
+                00h = unimplemented
+                04h = DX:BX -> interrupt hook list
+                FEh = subfunction disabled
+Note: the hook list array ends with API interrupt (usually 32h) although
+        it will differ if the API is installed at another interrupt
+----------326E05-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 05h
+Return:
+        AL = 00h
+----------326E06-----------------------------
+INT 32 - NOISE.SYS - GET DEVICE DRIVER HEADER
+        AH = 6Eh
+        AL = 06h
+Return:
+        AL = number of device drivers in NOISE.SYS chain
+                02h = default (for RANDOM and URANDOM devices)
+        AH = AMIS device driver flags (set to 00h for now)
+        DX:BX -> first device in chain
+Note: this function is a proposed addition to the AMIS standard
+        and is subject to change
+----------326E07-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 07h to 0Fh
+Return:
+        AL = 00h
+Note: These functions are reserved for future use in the AMIS standard
+----------326E10-----------------------------
+INT 32 - NOISE.SYS - STATUS CHECK
+        AH = 6Eh (function id)
+        AL = 10h
+Return: CF set on error
+           AL = error codes returned by the API
+                FDh = too many processes using the API
+	CF clear if successful
+        AL = status
+                FFh = ok
+        BH = number of processes using the API
+        CX = number of random bytes waiting
+        DX = maximum possible bytes waiting
+                if CX=DX, the pool is full
+Notes: this subfunction is a convenient way to check the driver if any
+        fresh bytes are waiting in the output pool.
+SeeAlso: INT 32,AH=6Eh
+----------326E11-----------------------------
+INT 32 - NOISE.SYS - GET ENTROPY ESTIMATE
+        AH = 6Eh (function id)
+        AL = 11h
+Return: CF set on error
+           AL = error codes returned by the API
+                00h = subfunction not supported
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        EBX = estimated bit count (See notes)
+        CL = FRACBITS (number of fractional bits)
+        EDX = low 32-bits of total number of samples added
+Notes: the estimated number of fresh random bits is equal to
+        (EBX >> FRACBITS) + ((EBX & ((1 << FRACBITS)-1) / (1 << FRACBITS))
+----------326E12-----------------------------
+INT 32 - NOISE.SYS - ADD SAMPLE FROM FAST TIMER
+        AH = 6Eh  (function id)
+        AL = 12h
+Return: CF set on error
+           AL = error code
+                FCh = quality of sample is too low
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes waiting
+Note: subfunctions 12h and 13h are meant for applications or devices
+        which are able to gather entropy from other sources which are
+        not polled by NOISE.SYS (for example, a communications driver
+        could use this call to sampling packet arrival times).
+----------326E13-----------------------------
+INT 32 - NOISE.SYS - ADD 16-BIT SAMPLE TO RANDOM POOL
+        AH = 6Eh (function id)
+        AL = 13h
+        DX = sample
+Return: CF set on error
+           AL = error code
+                FCh = quality of sample is too low
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes waiting
+SeeAlso: INT 32/AX=6E12, AX=6E19
+----------326E14-----------------------------
+INT 32 - NOISE.SYS - GET FLAGS
+        AH = 6Eh  (function id)
+        AL = 14h
+Return:
+        BX = flags
+        CX = settable flags mask
+Note: later versions may use EBX and ECX if needed
+
+Defined flags:
+        bit 0 = Windows is active
+        bits 1-5 = reserved
+          (bit 2 Used by Subfunction 19h)
+        bit 6 = clock drift sampling
+        bit 7 = video retrace drift sampling
+        bit 8 = network access sampling (reserved for future versions)
+        bit 9 = CD-ROM access sampling (reserved for future versions)
+        bit 10 = DOS spinner
+        bit 11 = DOS exec() and exit() sampling
+        bit 12 = mouse sampling
+        bit 13 = disk sampling (Int 13h)
+        bit 14 = keystroke timings
+        bit 15 = hardware RNG (reserved)
+Note: future versions of NOISE.SYS may account for other multitasking
+        systems such as OS/2 DOS Boxes or DesqView
+      no flags defined for DOS flush() sampling
+Bug:  under DOS 7, Win95 or OS/2, the CX register may allow setting of
+        bit 13; however this will be ignored by the driver since Int 13h
+        is not hooked under these systems
+----------326E15-----------------------------
+INT 32 - NOISE.SYS - SET FLAGS
+        AH = 6Eh  (function id)
+        AL = 15h
+        BX = flags
+Return:
+        BX = flags
+Note: invalid flags are ignored, however it's best to mask out unsettable
+        flags from the value of CX returned by subfunction 14h
+SeeAlso: INT 32/AX=6E14
+----------326E16-----------------------------
+INT 32 - NOISE.SYS - READ URANDOM BYTES - DevRead()
+        AH = 6Eh  (function id)
+        AL = 16h
+        CX = number of bytes
+        ES:DI -> buffer
+Return: CF set on error
+           AL = error code
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes read
+Note: this function is meant for TSRs or applications where reading from
+        character devices is difficult; reads should be from the URANDOM
+        device whenever possible
+----------326E17-----------------------------
+INT 32 - NOISE.SYS - READ RANDOM BYTES - RDevRead()
+        AH = 6Eh  (function id)
+        AL = 17h
+        CX = number of bytes
+        ES:DI -> buffer
+Return: CF set on error
+           AL = error code
+                FBh = random pool is empty
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes read
+Note: this function is meant for TSRs or applications where reading from
+        character devices is difficult; reads should be from the RANDOM
+        device whenever possible
+      This function will not return more bytes than are estimated to be
+        "truly random", so it may return less bytes than are requested.
+----------326E18-----------------------------
+INT 32 - NOISE.SYS v0.6+ - READ CONTROL RECORD
+        AH = 6Eh
+        AL = 18h
+        CX = buffer size
+        ES:DI -> buffer
+Return:
+        AL = 00h = unimplemented (pre-v0.6)
+             FEh = subfunction is disabled
+             FFh = ok
+        CX = bytes read (if AL=FFh only)
+Note: the control record corresponds to the IOCTL Read record
+----------326E19-----------------------------
+INT 32 - NOISE.SYS - RESERVED
+        AH = 6Eh
+        AL = 19h to 7Fh
+Return:
+        AL = 00h
+Note: These functions are reserved for future use; if you add your own
+        functions to the driver, start at function 80h.
+----------326E19-----------------------------
+INT 32 - NOISE.SYS v0.62 - ADD 16-BIT SAMPLE w/out ENTROPY ESTIMATION
+        AH = 6Eh
+        AL = 19h
+        DX = sample
+Return: CF set on error
+           AL = error code
+                00h = unimpemented
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes waiting
+Note: this function adds samples via the Accumulate() function, which
+        does not affect the entropy estimate returned in CX
+      32 consecutive calls to this function should mix the entire pool
+SeeAlso: INT 32/AX=6E12, AX=6E13
+----------326E19-----------------------------
+INT 32 - NOISE.SYS v0.61 ONLY - PROTECTED MODE/WINDOWS TEST FUNCTION
+        AH = 6Eh
+        AL = 19h
+Return:
+        AL = 00h                 
+Note: originally intended as part of an interface with the STAT.386
+        or (forthcoming) VRANDOM.386 Windows VxDs
+
+Possible functions to be added would include a list of hooked interrupts
+used for sampling (apps and drivers that take over IRQs would be able to
+check this and then use add-sample calls) as well as to return the last-
+seen value for each sampling method (so that disabled methods can be
+determined).
+
+
+
+        Unsorted References 
+--------------------------------------------------------------------------
+        The following is a list of useful programming, hardware and crypto
+        references:
+
+        "8259-inf.zip" (from zfja-gate.fuw.edu.pl in hardware.inf/).
+          Miscellaneous e-mail thread(s) about Intel 8259 PIC, ca. 1990-3.
+
+        Baresel, Andre and Craig Jackson. 1995. "Soundblaster Programming
+          Information."  Version 0.90.  Online.  Internet.
+          <URL ftp://oak.oakland.edu/SimTel/msdos/sound/sblast09.zip>
+
+        Brown, Ralf. 1995. "MS-DOS Interrupt List".  Online (many sites).
+
+        -----. nd. "Alternate Multiplex Interrupt Specification (AMIS)."
+          v3.5-3.6. np.  (See also Dunford, Chris. 1991. "IBM's Interrupt-
+          Sharing Protocol." np.)
+
+        Collins, Robert. nd. "Intel Secrets..." <URL http://www.x86.org>.
+
+        "DOS Programmer's Reference" 2nd Edition.  Terry Dettmann and Jim
+          Kyle, Eds.  Que Books.  1989.
+
+        Eastlake, D, S. Crocker and J. Schiller. 1994.  RFC-1750.
+          "Randomness Recommendations for Security." December 1994.
+
+        Elliott, Paul. "rng_810.zip" OS/2 driver for CALNET/Newbridge
+          RNG-810 card.
+
+        Ellison, Carl <cme@tis.com> and Burt Kaliski <burt@rsa.com>. 1995.
+          "P1363: Appendix E -- Cryptographic Random Numbers."  Draft V1.0.
+          November 11, 1995. Online.  Internet.
+          <URL http://www.clark.net/pub/cme/P1363/ranno.html>
+
+        Ellison, Carl. 1995. "CME's Random Number Conditioning Page."
+          <URL http://www.clark.net/pub/cmd/html/ranno.html>.
+
+        FIPS PUB 180-1. 31 May 1994. "The Secure Hash Standard."
+
+        Gutmann, Peter. 1992.  Source code for "shs.c" and "shsdrvr.c".
+
+        Jenkins, Bob. 1994. "A tester of random number generators." from
+          a post to sci.crypt, July 13, 1995.
+
+        Kyle, Jim. 1990. "Loading Device Drivers from the DOS Command
+          Line." Dr. Dobb's Journal.  November 1991. pp. 30-42, 90-98.
+          (See also the "Undocumented DOS" by the same author.)
+
+        Lendl, Otmar. 1996. "Pseudorandom number generation package" v1.3.
+          Online. Internet. <URL ftp://random.mat.sbg.ac.at/pub/software/>.
+
+        Long, David. 1992. "TSR Support in Microsoft Windows Version 3.1".
+          Online. Internet. [from ftp.microsoft.com: original URL lost.]
+
+        Marsaglia, George. 1996. "DIEHARD: a battery of tests of randomness.
+          (Source C files, Jan 3 1996)"
+
+          See also "DIEHARD". Online. Internet.
+          <URL http://stat.fsu.edu/~geo/diehard.html>
+
+        Maurer, Ueli M. 1990. "A Universal Statistical Test for Random Bit
+          Generators."  Advances in Cryptology - CRYPTO '90, Proceedings.
+          Springer-Verlag, Berlin, New York.
+
+        Mitchell, D.P., Jack Lacy, and Matt Blaze. 1995.  Source code for
+          "truerand".
+
+          There is a similar truerand() implementation by Phil Karn as well.
+          "truerand" uses CPU clock-drift sampling as a source of entropy.
+
+        Petzold, Charles. "Programming Windows". Microsoft Press.
+          Macmillan/Penguin. 1990.
+
+        Ritter, T. 1991. "The Efficient Generation of Cryptographic
+          Confusion Sequences." Cryptologia. 15(2): 81-139. Online. Internet.
+          <URL http://www.sys.uea.ac.uk/~rs/ritter.html>
+
+        Rivest, Ron. 1992. RFC-1321.  "The MD5 Message Digest Algorithm."
+
+        Schneier, Burce. 1994.  "Applied Cryptography."  New York: John
+          Wiley and Sons, Inc. (Second edition, 1995.)
+
+        "Selected Bibliography of Random Number Generation, Analysis, and
+          Use."  Online.  Internet.
+          <URL http://rainbow.rmii.com/~comscire/QWBIB.html> (21 Mar 1996)
+
+        Theodore T'so. 1995. Source code to /dev/random ("random.c") for
+          Linux, Version 0.95 (4-Nov-95).
+
+        Wagner, David. "Randomness resources for Dr. Dobb's Journal readers."
+          Online.  Internet.
+          <URL http://http.cs.berkeley.edu/~daw/netscape-randomness.html>.
+

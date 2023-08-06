@@ -1,0 +1,14 @@
+dosbox.exe - Shortcut.lnk
+httpd
+httpd.txt
+rootCA.crt
+rootCA.key
+rootCA.srl
+server.crt
+server.csr
+server.key
+.vscode/settings.json
+DOSBox-staging/
+build/
+HTTPDOS.exe
+httpdos-X.Y.Z.zip

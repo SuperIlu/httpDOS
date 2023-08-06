@@ -1,0 +1,37 @@
+      An important note: The current version of NOISE.SYS is not entirely
+      compatible with software written to use versions prior to 0.4!
+
+      The driver now implements two devices, /dev/random and /dev/urandom.
+      The latter (/dev/urandom) is equivalent to the older /dev/random
+      device, and will return as many bytes as are requested.
+
+      /dev/random will not return more bytes than the estimated entropy
+      in the pool.  It is meant for key-generation.
+
+      Please make any necessary changes to your software.
+
+      Because of these changes, most dynamic device-driver loaders cannot
+      handle drivers like NOISE.SYS without crashing miserably.  This is
+      not because of any weird or undocumented features in the driver,
+      but because the authors of the respective utilities did not bother
+      to account for chained drivers, even though DOS has no problems
+      with them.  They load fine when placed in the CONFIG.SYS file.
+
+      This distribution contains source code patches for three of the
+      utilities, DEVLOD, DRVLOAD and Idrv, which will enable them to load
+      this and similar drivers properly, as well as work on DOS 6.
+
+      You will have to get a copy of the original source code and apply
+      the patches yourself, since the sources are copyrighted.
+
+      This is not an endorsement for or disparagement against any
+      program or author.  Those were the only two utilities which are
+      distributed with source code (and the moral to the story is....)
+
+      Writing the patch was a very simple exercise compared to writing
+      my own utility.
+
+      No guarantees or warranties are made, etc. Use them at your own risk.
+
+      As always, please read the documentation!
+

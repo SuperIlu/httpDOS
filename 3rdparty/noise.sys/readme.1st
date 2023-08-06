@@ -1,0 +1,47 @@
+This package contains the "noise" system driver for use on DOS machines.
+It collects random data that can be used by cryptographic programs.
+These include programs claiming to make secure connections over
+the internet (e.g., browsers or file retrievers using the https://
+protocol). Noise is generally installed from config.sys, but see the
+"pat" directory in the source distribution for information about how to
+load it from the command line.
+
+This program was written by Robert Rothenburg Walking-Owl and by
+Colin Plumb. The program has not been developed since 1996 and the
+authors no longer work with the DOS system. They have kindly agreed
+to re-release the code under a liberal BSD-type license, but are not
+planning any further development of the code. The code is now available
+for improvement and modification should anyone else have the interest
+and skill. Please don't send suggestions for improvement to the original
+authors, since they are not going to implement modifications. Their
+email addresses in the documentation are probably no longer valid. As of
+January 2005, I have been appointed the maintainer of the noise program.
+Please send any suggestions to me at "dkaufman@rahul.net".
+
+When installed, the noise program creates two character devices, RANDOM$
+and URANDOM$ (also accessible as /dev/random$ and /dev/urandom$).
+Reading from these devices should give "random" data. Any programs which
+wish to use that data will need to be configured to read from those
+devices. Starting in January 2005, the OpenSSL code will try to read
+from /dev/urandom$ in DJGPP implementations. Hence, programs compiled
+with OpenSSL for DJGPP (such as lynx and wget) will be able to get
+random data when noise is installed, thus potentially increasing the
+security of connections made with those programs.
+
+If you are planning to run DJGPP programs that perform encryption, I
+would suggest installing "noise", to ensure the availability of adequate
+entropy for the necessary cryptography.
+
+There are two binaries included, noise386.sys and noise586.sys. The
+noise586.sys program has code included which requires a pentium machine.
+For 386 and 486 machines, please use the noise386.sys program instead.
+The two noise binaries and the sample.exe program have been assembled
+and compiled by me.
+
+The text files included in this package come from the 1996 release, and
+have not been changed except for the change in the license status of
+noise. The original version of noise is still available on the internet
+at: "http://www.funet.fi/pub/crypt/random/noise063.zip"
+
+Doug Kaufman (dkaufman@rahul.net)
+January 2005

@@ -1,0 +1,42 @@
+Most important: more testing needs to be done on this driver, particularly
+        the quality of various sampling methods under various conditions
+        for both the quality of the device's ouutput and the security of
+        relying this device for key generation!
+
+Features and fixes to add (or think about adding), in no particular order:
+        [By all means, if you have or desire to work on these, please do;
+        I don't have all the time I would like to nowadays.]
+
+        Rewrite the driver to that the API installs itself, and then the
+          driver (possibly a second file?) calls the API.
+
+        Write a separate sampling device that sends writes to the API.
+
+	Write more demo	utilities and interface	routines. (A TSR which
+	  samples /dev/random and over time generates a	file of	random
+	  noise	while in the background	would be nice.)
+
+        Write user-friendly (Windows/DOS) configuration utilities.
+
+        Write OS/2, Windows 3.x/95/NT ports (with a possible clock drift
+          implementation based on spawned threads?).  Make driver aware
+          of systems such as DesqView, MultiDOS, VMiX, etc.
+
+        Add support for Windows VRANDOM.386 VxD (in the works...).  Add
+          interface to other Windows VxDs, such as mouse (VMD), etc.
+
+        Experiment with Win and other multitasking idles and time slice
+          release sampling.  Look for other (worthwhile) sampling
+          methods, IRQs, etc.
+
+        Find a workaround so Pentium RDTSC can be sampled in Windows or
+          OS/2 (without QEMM or 386MAX), possibly writing a separate
+          Windows VxD.
+
+        Add more i486 or i586-specific optimizations.
+
+        Add support for some hardware RNG cards (?).
+
+        Add a different hash algorithm as an alternative to SHA (?)
+          [HAVAL or RIPEMD-160 would be slower and be larger, though.]
+

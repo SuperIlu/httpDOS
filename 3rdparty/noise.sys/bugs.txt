@@ -1,0 +1,38 @@
+Potential bugbears:
+
+        The devices may be buggy when used from 32-bit apps (Win95 or
+        Win32s).  Be cautious about using this driver until a VxD
+        (tentatively VRANDOM.386, VxD-Id 3996h)  is released.
+
+        The bug using the console's COPY command appears to be fixed.
+
+        Building the driver with __CPU set to 5 (i586) uses the "rdtsc"
+        (Read Timestamp Counter) instruction as an entropy source, which
+        may cause a protection fault when run under Windows or OS/2.
+        Oddly, this appears to run with no apparent problems when QEMM
+        (or allegedly 386MAX) is loaded instead of HIMEM.SYS.
+
+        Even then, when selecting "Restart..." under the "Shutdown"
+        menu in Win95, you may get an exception from QEMM.
+
+        The above is for Pentium (i586) processors; PentiumPro (i686)
+        processors, I've been told, may handle "rdtsc" differently.
+
+        However, there may be other problems with NOISE.SYS when used
+        with QEMM.  On a 486DX4 running MS-DOS 5.0 and AMI BIOS (1992)
+        there have been many  machine exceptions, though generally tied
+        to using an old pager utility.  This problem has not occurred
+        on a Pentium running Win95 and Award BIOS using the same pager.
+
+        Since the clock drift sampling uses the BIOS Event Wait timer on
+        a continuous basis, there may be conflicts with other programs
+        that also use the timer.  (The /c option is disabled by default:
+        you will have to rebuild the driver if you want to enable it.)
+
+Reporting bugs:
+
+        Feel free to study the source code and look for bugs or poor
+        implementations that I may have missed.
+
+        Report all bugs to <wlkngowl@unix.asb.com>
+

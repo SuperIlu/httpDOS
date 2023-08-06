@@ -1,0 +1,83 @@
+###
+# Makefile for cross compiling HttpDos for FreeDOS/MS-DOS
+# All compilation was done with DJGPP 12.2.0 built from https://github.com/andrewwutw/build-djgpp
+# ./build-djgpp.sh --target=i586-pc-msdosdjgpp --prefix=/home/ilu/cross all
+# make sure the DJGPP toolchain is in your path (i586-pc-msdosdjgpp-XXX)!
+###
+
+
+THIRDPARTY	= 3rdparty
+INI			= $(THIRDPARTY)/ini-20220806/src
+MBEDTLS		= $(THIRDPARTY)/mbedtls-2.28.3
+
+LIB_MBEDTLS = $(MBEDTLS)/library/libmbedtls.a
+
+CC=gcc
+
+# compiler
+CDEF     = -DENABLE_STATIC_FILE=1 -DDEBUG_MSG -DCERT_FILES=1 -DLINUX=1
+CFLAGS   = -MMD -Wall -std=gnu99 -O2 -fomit-frame-pointer $(INCLUDES) -fgnu89-inline -Wmissing-prototypes $(CDEF)
+INCLUDES = \
+	-I$(realpath ./src) \
+	-I$(realpath $(MBEDTLS))/include \
+	-I$(realpath $(INI))/
+
+# linker
+LIBS     = -lmbedtls -lmbedx509 -lmbedcrypto -lm
+LDFLAGS  = -s \
+	-L$(MBEDTLS)/library/
+
+# output
+EXE      = httpd
+RELZIP   = httpdos-X.Y.Z.zip
+
+# dirs/files
+DOJSPATH		= $(realpath .)
+BUILDDIR		= build
+
+MPARA=-j8
+
+PARTS= \
+	$(BUILDDIR)/main.o \
+	$(BUILDDIR)/middleware.o \
+	$(BUILDDIR)/server.o \
+	$(BUILDDIR)/ini/ini.o
+
+all: init httpdos
+
+httpdos: init libmbedtls $(EXE)
+
+libmbedtls: $(LIB_MBEDTLS)
+$(LIB_MBEDTLS):
+	$(MAKE) $(MPARA) -C $(MBEDTLS) -f Makefile lib
+
+$(EXE): $(PARTS) init libmbedtls
+	$(CC) $(LDFLAGS) -o $@ $(PARTS) $(LIBS)
+
+$(BUILDDIR)/%.o: src/%.c Makefile
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/ini/%.o: $(INI)/%.c Makefile
+	$(CC) $(CFLAGS) -c $< -o $@
+
+cacert.pem:
+	curl --remote-name --time-cond cacert.pem https://curl.se/ca/cacert.pem
+
+init:
+	mkdir -p $(BUILDDIR) $(BUILDDIR)/ini
+
+clean:
+	rm -rf $(BUILDDIR)/
+	rm -f $(EXE) cacert.pem W32DHCP.TMP
+
+distclean: clean wattclean mbedtlsclean
+
+mbedtlsclean:
+	$(MAKE) -C $(MBEDTLS) -f Makefile clean
+
+.PHONY: clean distclean init
+
+DEPS := $(wildcard $(BUILDDIR)/*.d)
+ifneq ($(DEPS),)
+include $(DEPS)
+endif

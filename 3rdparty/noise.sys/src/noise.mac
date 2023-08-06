@@ -1,0 +1,263 @@
+COMMENT |
+== License =================================================================
+
+  Copyright (c) 1995, 1996, 2004, Robert Rothenburg Walking-Owl.
+  (Portions by Colin Plumb.)  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in
+      the documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the names of the authors nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+===========================================================================|
+
+; --------------------------------------------------------------------------
+; Miscellaneous macros used by NOISE.SYS
+
+; (*) No flag is (yet) defined for __SamplFlush method
+
+WindowsFlag	equ 0000000000000001b ;	We're in Windows
+QuietFlag	equ 0000000000000010b ;	Don't echo any messages
+
+;;STAT386Flag     equ 0000000000000100b ; STAT.386 Entry Point obtained
+
+;;NoAudioFlag     equ 0100000000000000b ; Disable audio sampling
+flSamplDrift    equ 0000000001000000b ; Enable clock drift sampling
+flSamplVideo    equ 0000000010000000b ; Enable video sampling
+flSampleNetwrk  equ 0000000100000000b
+flSampleCDROM   equ 0000001000000000b
+flDosSpinner    equ 0000010000000000b ; Sampling calls to Int 21h
+flSamplExec     equ 0000100000000000b ; Sample exec timings
+flSamplMouse    equ 0001000000000000b ; Enable mouse sampling
+flSamplDisk     equ 0010000000000000b ; Enable disk access sampling
+flSamplKeybd    equ 0100000000000000b ; Keyboard sampling is enabled
+flHardware      equ 1000000000000000b ; Hardware RNG is used
+
+DEFAULTFLAGS = (100b)*(NOMIX or NOHASH)
+if __Sample09
+DEFAULTFLAGS = DEFAULTFLAGS or flSamplKeybd
+endif
+if __SamplExec
+DEFAULTFLAGS = DEFAULTFLAGS or flSamplExec
+endif
+if __DosSpinner
+DEFAULTFLAGS = DEFAULTFLAGS or flDosSpinner
+endif
+;
+
+SettableFlagsMask = 0;
+if __Sample13
+SettableFlagsMask = SettableFlagsMask or flSamplDisk
+endif
+if __SamplMouse
+SettableFlagsMask = SettableFlagsMask or flSamplMouse
+endif
+if __SamplDrift
+SettableFlagsMask = SettableFlagsMask or flSamplDrift
+endif
+if __SamplVideo
+SettableFlagsMask = SettableFlagsMask or flSamplVideo
+endif
+
+SaveRegs	MACRO	  ; ----- save registers, set ds = cs
+		push	es
+		push	ds
+  if __CPU lt 3
+		.err ; not yet implemented
+  else
+		pushad		    ; save all registers
+  endif
+		mov	ax, cs	    ; avoid cs:	overrides
+		mov	ds, ax
+		ENDM
+
+RestoreRegs	MACRO	  ; ----- restore registers
+  if __CPU lt 3
+		.err
+  else
+		popad			; restore registers
+  endif
+		pop	ds
+		pop	es
+		ENDM
+
+
+; --------------------------------------------------------------------------
+timer0     equ 40h   ; timer0 port
+timercntl  equ 43h
+
+SampleTimerWord	MACRO
+                LOCAL   @GotSample, @ChkAPI, @GotAPI, @TSC
+  if (__CPU ge 4) and (__UseTSC)
+; (!) Will cause protected mode problems: beware!
+;
+;;    ifdef WIN95
+;;                mov     ax, 1               ; Call STAT.386 API
+;;                mov     bx, 31h
+;;                xor     ecx, ecx
+;;                mov     edx, ecx
+;;                mov     edi, ecx
+;;                call    DWORD PTR [STATAPI]
+;;    else
+                rdtsc   ;; ignore edx and high-16 bits of eax for now
+;;    endif
+  else
+;; Timer sampling code (based on method used in PGP 2.6) originally based on
+;; PGP 2.3 code in earlier versions (<v0.3), with much rewriting by Colin
+;; Plumb (v0.3)
+;; (?) Modified to use dx rather than cx for Pentium rdtsc friendliness
+		mov	al, 0c2h
+		out	timercntl, al ;	Latch status and count for timer 0
+		in	al, timer0  ; Get status word
+		test	al, 2	    ; Remember mode 2 v. mode 3	for later
+                mov     dh, al
+		in	al, timer0  ; Get count	low byte
+		mov	ah, al
+		in	al, timer0  ; Get count	high byte
+		xchg	ah, al
+		jz	SHORT @GotSample ; If mode 2, skip this	last bit...
+                add     dh, dh      ; Top bit of status byte into CF
+		rcr	ax, 1	    ; Shift data down and accumulate
+  endif
+@GotSample:
+		ENDM
+
+;
+; Macro to set up the IBM Interrupt Sharing Protocol
+;
+ibm_isp         MACRO HookName, DeviceReset
+                LOCAL @EntryPoint
+  ifb <DeviceReset>
+Reset&HookName  LABEL NEAR
+                retf
+  endif
+HookName        LABEL FAR
+                jmp   SHORT @EntryPoint ; Required jump to 
+                DD    ?             ; Previous handler
+                DW    424Bh         ; Signature
+                DB    0             ; Not primary handler
+  ifnb <DeviceReset>
+                jmp   SHORT DeviceReset
+  else
+                jmp   SHORT Reset&HookName ; Short jump to reset routine
+  endif
+                DB    7 DUP (?)     ; Reserved
+@EntryPoint     LABEL NEAR
+                ENDM
+
+; -----	Macro to install a latch (added	v0.3.6)
+InstallSampler	MACRO	Intr, Addr
+		mov	al, Intr
+		mov	bx, OFFSET Addr
+		call	Install_Int
+		ENDM
+
+; -------------------------------------------------------------------------
+; Get byte from	soundcard (Soundblaster/Adlib) input, based on sources from
+; "Soundblaster	Programming Information" v0.90 by Andre	Baresel	and Craig
+; Jackson, 1995	(sblast09.zip).	 Added v0.3.7
+
+SampleAudio	MACRO
+		LOCAL	@WaitReady, @WaitRead, @SkipSample
+  if __samplaudio
+		test	Flags, WindowsFlag or NoAudioFlag
+		jnz	SHORT @SkipSample ; Changed Windows test, v0.4.2
+		mov	dx, sbPort
+		add	dx, 0Ch		; DSP command/status port
+@WaitReady:				; Wait for SB to be ready (v0.4.2)
+		in	al, dx		; Read status
+		shl	al, 1		; Check	if buffer is busy
+		jc	SHORT @WaitReady ; if yes, continue
+		mov	al, 20h		; cmd to sample	byte directly
+		out	dx, al
+		add	dx, 2		; data avail status port
+@WaitRead:
+		in	al, dx
+		shl	al, 1
+		jnc	SHORT @WaitRead
+		sub	dx, 4
+		in	al, dx
+
+		xor	ah, ah ; clear ah so TrackDelta	doesn't	get confused
+		call	TrackDeltas
+@SkipSample:
+   endif
+		ENDM
+
+
+SampleMousePos	MACRO
+                LOCAL @NoMousePos, @NoButton, @NoAddBut
+  if __samplmouse
+                test    [Flags], flSamplMouse
+                jz      SHORT @NoMousePos
+; -----	Get motion counters from mouse,	add changes of position	to pool
+; Reading the actual position is friendlier to other software which might
+; read the counter changes (function 0Bh).  It will also be able to get
+; data while in Windows.
+                mov     ax, 03h
+		int	33h
+                test    bx, bx          ; collecting timings between
+                jz      SHORT @NoButton ; mouse button presses
+                push    dx cx
+                call    Sample          ; get sample from timer
+  @NoAddBut:
+                pop     cx dx
+  @NoButton:
+                mov     ax, cx          ; get the delta-X
+                sub     ax, LastX
+                jz      SHORT @NoMousePos ; if no change, ignore
+                mov     LastX, cx       ; save current position
+                cmp     ax, DeltaX      ; same as the last change?
+                je      SHORT @NoMousePos ; if so, ignore as well
+                mov     DeltaX, ax      ; save the delta
+                mov     ax, dx          ; get the delta-Y...
+                sub     ax, LastY
+                jz      SHORT @NoMousePos
+                mov     LastY, dx
+                cmp     ax, DeltaY
+                je      SHORT @NoMousePos
+                mov     DeltaY, ax
+                mov     ax, cx
+                rol     dx, 8
+                add     ax, dx
+                cmp     ax, LastPos
+                je      SHORT @NoMousePos
+                mov     LastPos, ax
+                call    TrackDeltas
+  endif
+  @NoMousePos:
+		ENDM
+
+; -------------------------------------------------------------------------
+; Pentium "Read Timestamp Counter" instruc. (not defined in TASM 4.1)
+
+  if __CPU ge 5
+rdtsc           MACRO
+; It might be safer to read the machine status reg (no. 10?) in p-mode.
+                DB 0Fh, 31h
+                ENDM
+  endif

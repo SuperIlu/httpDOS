@@ -1,0 +1,40 @@
+--- noisesys/src/demo/sample.c.ori	1996-06-05 10:05:18.000000000 -0800
++++ noisesys/src/demo/sample.c	2005-01-05 20:12:26.000000000 -0800
+@@ -24,7 +24,7 @@
+ 
+ #include "usuals.h"
+ 
+-#ifdef __MSDOS__
++#if defined(__MSDOS__) || defined(__DJGPP__)
+ #       define SIZE 8192             /* size of buffer */
+ #       define DEFAULT_DEV "/dev/random$"
+ #else
+@@ -66,7 +66,11 @@
+   else {
+     filemode="wb";
+     devname=getenv("RNG_DEVICE");
++#ifdef __DJGPP__
++    if (strcmp(devname, NULL)==0) devname=DEFAULT_DEV;
++#else
+     if (strcmp(devname,"")==0) devname=DEFAULT_DEV;
++#endif /* __DJGPP__ */
+ 
+     ofname=argv[1];
+     num=0; sscanf(argv[2], "%ld", &num);
+@@ -79,14 +83,14 @@
+ #endif
+         switch (argv[i][j]) {
+           case 'r':
+-#ifdef __MSDOS__
++#if defined(__MSDOS__) || defined(__DJGPP__)
+             devname="/dev/random$";
+ #else
+             devname="/dev/random";
+ #endif
+             break;
+           case 'u':
+-#ifdef __MSDOS__
++#if defined(__MSDOS__) || defined(__DJGPP__)
+             devname="/dev/urandom$";
+ #else
+             devname="/dev/urandom";

@@ -1,0 +1,281 @@
+COMMENT |
+== License =================================================================
+
+  Copyright (c) 1995, 1996, 2004, Robert Rothenburg Walking-Owl.
+  (Portions by Colin Plumb.)  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in
+      the documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the names of the authors nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+===========================================================================|
+
+;;__CPU   equ 3 ; (!) See technotes regarding i586 protection faults
+
+; --------------------------------------------------------------------------
+; Sampling method defines:
+
+; Timing-based samples:
+
+__Sample09 equ 1    ; Sample IRQ1 (the keyboard ISR at Int 09h)
+  ifdef WIN95
+__Sample13 equ 0
+  else
+__Sample13 equ 1    ; Sample low-level disk calls at Int 13h
+                    ; (!) The /d option is still required, since a disk
+                    ; cache will interfere with timing values.
+  endif
+
+__sample21 equ 0    ; Sample calls to Int 21h (DOS Services)
+                    ; if set to '1', __SamplExec and __SamplFlush are
+                    ; ignored (since they are part of DOS Services).
+                    ; __DosSpinner should also be set to zero(!)
+
+; Note: If running under Win95, set __Sample13 to 0 unless you don't mind
+;       using compatability mode.
+
+__SamplCDROM equ 0  ; Sample low-level calls to CD-ROM (!) Untested!
+                    ; (This appears not to work...)
+
+__SamplExec  equ 1  ; Sample timings of calls to DOS exec() and exit()
+__SamplFlush equ 1  ; Sample DOS commit()/flush() calls
+
+; Background process defines:
+
+__Sample08   equ 1  ; Hook to timer tick interrupt (Int 1Ch)
+__Sample15   equ 0  ; Hook to Int 15h (!) Not yet fully implemented.
+__Sample28   equ 1  ; Hook to the DOS "Safe to Use" Idle (Int 28h)
+                    ; (!) For whatever reason, Win95 seems to crash if
+                    ;     this is disabled...
+
+SamplePeriod equ 1  ; Number of ticks between invoking __Sample08 hook.
+                    ; (There are about 18.2 ticks/second)
+                    ; If != 1, may cause problems with Win95
+
+__MixAtTicks equ 0  ; and (__CPU ge 5)
+                    ; Mix the entropy pool every SamplePeriod
+                    ; ticks on processor TSC.
+                    ; (!) Even with a Pentium, this appears to be a poor
+                    ;     source of entropy.  Not recommended.
+
+
+__DosSpinner equ 0  ; Increments a counter every time Int 21h is called.
+                    ; The counter is sampled every SamplePeriod ticks.
+                    ; (Set to one seems to crash Win95 sometimes...)
+
+__SamplMouse equ 1  ; Sample changes in mouse position and timings between
+                    ; mouse button presses. Requires the /m option.
+
+; Drift and retrace sampling not only appear to have negligable entropy
+; but may be correlated or periodic, and possibly being unusable. These
+; methods ARE NOT recommended for now.
+
+__SamplDrift equ 0  ; Sample processor drift. Requires the /c option.
+                    ; (!) Caveat: this is an experimental method.
+__SamplVideo equ 0  ; Sample fast timings between EGA/VGA retraces
+                    ; (!) Caution when used in an OS/2 DOS Box
+
+; Pentium stuff:
+
+  ifndef __UseTSC
+__UseTSC equ 0      ; use Pentium Timestamp Counter (if __CPU ge 4)
+  endif
+__Sample32Bits equ 0 ; Use 32-bit samples if using TSC
+
+; Other Parameters:
+
+InitSeedCnt equ 160 ; Number of bits initializing with /i option
+
+__NOHASHOUT equ 0   ; ==1 for unhashed POOLSIZES of any size divis. by 4 (!)
+POOLSIZE equ 128    ; Size of output pool (!) assumed to be a power of two
+                    ; (Actual size of pool in bytes is 4*POOLSIZE.)
+
+;; __NOHASHOUT is buggy: do not use yet.
+
+FRACBITS equ 4      ; Fractional bits used in entropy estimation
+N equ 6             ; Last-N samples hashed into LastSeenTable
+log2N = 101010b     ; log2(N), hardcoded for N=6,FRACBITS=4 (!)
+TABLESIZE equ 512   ; Size of lastseen[] table used in entropy estimation
+                    ; (!) TABLESIZE must be a power of 2, betw. 512..16k
+
+EntropyThreshold equ (8) shl FRACBITS   ; Minimum amount of entropy
+QualityThreshold equ (160) shl FRACBITS ; (!) Must be in 32-bit multiples
+
+; Incomplete or experimental methods (leave disabled):
+
+__SamplAudio equ 0  ; Sample from audio card (!) Incomplete implementation!
+__FULLHASH equ 0 ; Setting this is probably being overly conservative
+
+; if __FULLHASH==0, QualityThreshold is the minimum entropy threshold used
+; for transferring hashed bytes to the OutPool[]; if __FULLHASH==1, then
+; only QualityThreshold bits will be transferred when 512 bits have been
+; added to the hash.
+
+__ALIASRAND equ 0   ; 1 allows /dev/rand as an alias for /dev/random
+
+
+; Miscellaneous error checking for define conflicts:
+
+if (__DosSpinner) and (not (__Sample08))
+  %out **Warning: Timer hook is disabled.
+endif
+if (__SamplDrift or __SamplMouse or __SamplVideo) and (not (__Sample28))
+  %out **Warning: DOS Idle hook is disabled.
+endif
+
+; Allegedly some 486s have a TSC and recognize "rdtsc" instruction
+if (__CPU lt 5) and (__UseTSC)
+  %out **Warning: Using TSC although CPU < 586
+endif
+
+; --------------------------------------------------------------------------
+; Miscellaneous system defines
+
+BELL       equ 7          ; Special characters used for install msgs
+BackSpace  equ 8
+TAB	   equ 9
+CR	   equ 13
+LF	   equ 10
+DOT        equ 2Eh
+ZChr       equ 30h
+BetaChar   equ 225
+
+DOS	   equ 21h	  ; interrupts used for	installation
+Keyboard   equ 16h
+MltplxSvc  equ 2Fh
+MouseAPI   equ 33h
+
+UnknownCmd equ 8003h ; Device driver return codes
+BUSY	   equ 0200h
+DONE	   equ 0100h
+Attribute  equ 8000h ; Character device flag
+IoCtlSpt   equ 4000h ; "IOCTL Supported" flag
+
+ReqHdr		STRUC ;	----- Structure	of request/response header
+  Len		DB ?
+  UnitCode	DB ?
+  CmdCode	DB ?
+  StatusCode	DW ?
+  Reserved	DB 8 DUP (?)
+  Unused	DB ?
+  Addr		DD ?
+  Siz		DW ?
+ReqHdr		ENDS
+
+; --------------------------------------------------------------------------
+; API Definitions
+
+__AllowAddAPI   equ 1    ; Add-sample functions enabled in API
+
+DefaultInt      equ 32h  ; Default Interrupt
+
+apiInvalid      equ 000h ; Invalid function
+apiOk           equ 0FFh ; Function Ok
+
+apiDisabled     equ 0FEh ; Standard function was disabled or removed
+apiUseErr       equ 0FDh ; Another process is using that API function
+apiOverload     equ 0FCh ; Sampling functions in API are being abused
+apiEmpty        equ 0FBh ; Not enough entropy in random pool
+
+; --------------------------------------------------------------------------
+; Miscellaneous assembler defines
+
+__API equ 0
+ifndef __DEBUG
+  __DEBUG equ 0
+endif
+if 0                     ; assumes NOHASH and NOMIX might be defined
+  ifndef NOHASH
+    NOHASH equ __DEBUG
+  endif
+  ifndef NOMIX
+    NOMIX equ __DEBUG
+  endif
+else                     ; assumes they are not yet defined
+    NOHASH equ __DEBUG
+    NOMIX equ __DEBUG
+endif
+ifndef __CPU
+  __CPU equ 3
+endif
+
+if __CPU lt 3
+  %out **Error: Nothing earlier than an i386 processor is defined!
+  .286
+  .err
+elseif __CPU eq 3
+  .386
+elseif __CPU eq 4
+  .486
+elseif __CPU eq 5
+  .586
+else ; Currently no special optimizations for other processors in this ver.
+  %out **Warning: Only i386-i586 instructions are defined.
+  .386
+endif
+
+HashBits   equ 160  ; 160 bits for Secure Hash
+DataBits   equ 512  ; 512 bits per block for Secure Hash
+
+RawSize    equ DataBits/8
+
+ifndef InitSeedCnt
+  InitSeedCnt equ HashBits
+endif
+
+  ife POOLSIZE  ; ---- the tap sequence of the output pool -----
+        %out    **Message: no output pool will be used.
+  elseif __NOHASHOUT
+        %out    **Message: output pool will not mixed using taps.
+  elseif POOLSIZE eq 128 ; (512-byte output queue)
+OutTap1 equ 7   ; These values taken from random.c v0.95
+OutTap2 equ 9   ; Polynomial x^128+x^99+x^59+x^31+x^9+x^7+1
+OutTap3 equ 31
+OutTap4 equ 59
+OutTap5 equ 99
+OutTap6 equ 128
+  elseif POOLSIZE eq 64 ; (256-byte output queue)
+OutTap1 equ 1
+OutTap2 equ 6
+OutTap3 equ 10
+OutTap4 equ 38
+OutTap5 equ 62
+OutTap6 equ 64
+  elseif POOLSIZE eq 32 ; (128-byte output queue)
+OutTap1 equ 1   ; These values taken from "Numerical Recipies in C", 2nd ed.,
+OutTap2 equ 2   ; Willian Press et al, Cambridge University Press, 1992.
+OutTap3 equ 3
+OutTap4 equ 5
+OutTap5 equ 7
+OutTap6 equ 32
+  else
+     %out **Error: No taps for that value of POOLSIZE are defined!
+  endif
+
+DrvName equ "NOISE.SYS"
+

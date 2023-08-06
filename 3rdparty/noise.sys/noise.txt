@@ -1,0 +1,515 @@
+
+
+                                   NOISE.SYS
+
+                               (Version 0.6.3-Beta)
+
+                  A random-noise device driver for DOS boxes.
+
+            by Robert Rothenburg Walking-Owl <wlkngowl@unix.asb.com>
+                    Portions by Colin Plumb <colin@nyx.net>
+
+                 Copyright (C) 1995-1996. All Rights Reserved.
+		 Modified 2005 by Doug Kaufman
+
+
+           "Sequences of truly patternless, unpredictable digits are
+            a valuable commodity." --Ivars Peterson
+
+
+ |    Note: Changes in the documentation are marked with a pipe 
+ |    in the left-hand margin.
+
+      List of ingredients:
+
+        1. License
+        2. Introduction
+        3. System requirements
+        4. Installing the driver
+        5. Using the driver to generate random numbers
+        6. Credits
+
+      The technical notes have been moved into the "technote.doc" file:
+
+          Using the driver from appliations
+            Detecting the driver
+          A discussion of the driver's innards
+          Notes on the sampling methods and sources of entropy
+          Notes about modifying the driver
+          NOISE.SYS API (Version 0.5.3 and later)
+          Unsorted References 
+
+
+1. License
+--------------------------------------------------------------------------
+
+      This program is free software; you can redistribute it and/or modify
+      it under the terms of the enclosed license.
+
+
+      Trademarks and copyrights of any products mentioned in this document
+      belong to their respective owners.  Mention of a particular product
+      does not imply endoresement or derision of that product over another.
+
+
+2. Introduction
+--------------------------------------------------------------------------
+
+      Computers are deterministic beasts.  What comes out of the machine
+      is related to what was put in before and what came out previously.
+      This applies to the random number generators which can be found with
+      many compilers and programming languages: they are more properly
+      called "pseudo-random number generators" because they are not truly
+      random.
+
+      Avoiding philosophical hair-splitting, we'll say that "truly random"
+      data is unpredictable.  There are no correlations which allow one to
+      guess when and where a particular bit pattern will occur with any
+      reasonable certainty over any other bit pattern.
+
+      Such high-quality randomness is necessary for applications that are
+      sensitive to even the most subtle patterns in the data.  Many data-
+      security and encryption systems are particularly vulnerable to poorly
+      implemented key and initialization schemes (PKZip 1.0 and the recent
+      crack of Netscape come to mind).  The results of some simulations can
+      be skewed in subtle ways because of a bad random number generator.
+
+      Although most computers are not equipped with special hardware for
+      "true" random number generation, there are still ways in which one
+      sample high-quality random numbers.
+
+      Subtle differences in the time between keystrokes, variation in disk
+      access times, changes in mouse position, and even the drift between
+      various hardware timers and CPU clock can be used.
+
+      NOISE.SYS uses these methods.  The samples are mixed into an entropy
+      pool and processed using the revised Secure Hash Algorithm (SHA-1).
+      The processing is done to insure that even if the samples are not
+      optimum that the driver will still return "practically random" data.
+
+      The driver sets up two devices, RANDOM$ and URANDOM$ which return a
+      stream of random bytes when read.  [Note that devicenames in DOS
+      may also be referred to as /dev/devicename elsewhere in this doc.]
+
+      The difference between the two devices is that RANDOM$ will not
+      return more than the estmated number of random bytes in the pool,
+      while URANDOM$ will return as many bytes as are requested
+      (repeatedly mixing the entropy pool to ensure that the data does
+      not repeat).
+
+      The purpose of designing the interface as a character device is to
+      allow programs written in a variety of high- and low-level languages
+      to be able to use the driver and have access to crypto-quality
+      randomness.
+
+      It is also a start at initiating a standard by which other types of
+      drivers can be written, especially if and when specialized random-
+      number generatng hardware becomes commonplace on PCs: drivers can
+      be written for them which are compatible with pre-existing software.
+
+3. System requirements
+--------------------------------------------------------------------------
+
+      You need the following in order to run NOISE.SYS on your machine:
+
+         o An 80386 or later processor on an IBM or compatible machine.
+         o MS-DOS v3.3 or later, or compatible emulator or DOS box.
+         o At least 4-5k of free memory to load the device driver.
+
+ |    The driver has been tested on i486 and i586 machines using AMI (1992)
+ |    Award BIOSes, under MS-DOS versions 5.0, 6.22 and 7.0/Win95, Windows
+ |    3.1 DOS sessions with no apparent problems (though see the notes
+ |    below about conflicts and ceaveats!).
+ |
+ |    This driver is not recommended for use under OS/2 DOS Sessions.
+
+      3.1. Potential Conflicts
+
+      Multitasking systems such as Windows, Desqview and OS/2 take over
+      some of the low-level hardware functions that NOISE.SYS monitors,
+      effectually preventing the driver from collecting samples from
+      those IRQs.
+
+      For example, Windows 3.x takes over IRQ1, preventing the driver
+      from sampling the timings between keystrokes. (However the driver
+      will still be able to sample timings between disk access, mouse
+      movement, and any active spinners.)
+
+ |    If you use NOISE.SYS built to use the Pentium timestamp counter,
+ |    you may get protection faults while under Windows Enhanced Mode
+ |    or OS/2.
+
+      See the technical notes for conflicts that occur with audio or mouse
+      sampling, as well as the installation notes on when and where to
+      load the driver.
+
+ |    Earlier versions of the driver used RANDOM and URANDOM devicenames,
+ |    to be vaguely-compatible with Linux implementations.  An unpleasant
+ |    DOS quirk is that it's difficult to differentiate between files and
+ |    character devices... hence files with names like "random.c" weren't
+ |    accessable while NOISE.SYS was loaded.  Since version 0.5.7, the
+ |    device names now have a dollar sign ('$') appended to them (ie,
+ |    RANDOM$ and URANDOM$).
+
+      3.2. Bug-free software is a rare thing...
+
+      This driver uses a bit of low-level hardware programming and a few
+      poorly-documented features of DOS.  Hence it may not work on some
+      systems or with some programs.
+
+      Check the file "bugs.txt" for a listing of known bugs or potential
+      bugs.
+
+      Also make sure you've got the latest version of the program, in
+      case bugs were fixed.
+
+4. Installing the driver
+--------------------------------------------------------------------------
+
+      The NOISE.SYS driver can be placed in your "config.sys" file as
+      you would any other device driver.  If it encounters problem (such
+      as an invalid option or processor) it will print an error message
+      and abort loading.
+
+      An example line in your configuration file may appear like so:
+
+         device=c:\dos\system\noise.sys
+
+      Note that you can place the driver in any directory you choose.  The
+      "c:\dos\system\" path is used as an example only.
+
+      To load the driver in high memory, use "devicehigh=" instead.
+
+ |    It's also a good idea to put the following define in the autoexec:
+ |
+ |       set RNG_DEVICE=\dev\random$
+ |
+ |    If you use multiple boots or sometimes disable NOISE.SYS in your
+ |    configuration, you might prefer to use the following instead:
+ |
+ |      if exist random$ set RNG_DEVICE=\dev\random$
+ |
+ |    The RNG_DEVICE environment variable should *not* be set to the
+ |    /dev/urandom device, since it is more or less a Pseudo-RNG.
+ |
+ |    If you want to make sure that the driver is re-seeded between
+ |    each boot, you may want to add the following to your autoexec:
+ |
+ |      if exist c:\randseed.bin copy c:\randseed.bin urandom$
+ |      sample c:\randseed.bin 512 urandom$
+ |
+ |    You may want to put the sample command in a batch file used to
+ |    shut your system down along with any unmounting, park or ship
+ |    utilities.
+
+      4.1. Installation Options
+
+      You can pass options to the driver to enable features when it is
+      loaded.  Some of the features can be altered using the IOCTL/API
+      after the driver is loaded.
+
+      The following are valid options (case insensitive):
+
+         /l        Displays the license agreement when installing.
+
+         /q        Supresses the display of technical information when
+                   installing.
+
+         /i        Initialize the entropy pool with random keystrokes.
+
+                   This option is only needed if you load the driver
+                   from the command-line shortly before running an
+                   application which uses it.
+
+                   Note: the driver's method of entropy estimation is
+                   relatively conservative.  You will have to type about
+                   fifty or so keystrokes just to initialize it with only
+                   160-bits of entropy.
+
+         /d        Sample disk access timings.
+  
+                   Because loading the driver after disk caching utilities
+                   makes disk sampling pointless, this method is now an
+                   option.  If no disk cache is present, or if the driver
+                   is loaded before a cache, use the /d option.
+
+ |                 This option will be ignored or return an error under
+ |                 MS-DOS 7/Win95 or OS/2 DOS Sessions.  If you would like
+ |                 to use this option under Win95, see the section below.
+ |
+ |       /o        Ignore OS version.
+ |
+ |                 Tells NOISE.SYS to ignore the DOS version, allowing the
+ |                 use of the /d option under DOS 7/Win95, OS/2, etc.  The
+ |                 /o option MUST be the first option on the command line.
+ |
+ |                 Note that using /o /d under Win95 will force the system
+ |                 into compatability mode (with slower disk access?).
+  
+         /c        Sample clock drift.
+  
+                   While the system is idling during the command line,
+                   the driver will perform a tight loop and sample the
+                   drift between the timer and the real time clock.
+  
+                   By default this option is disabled.  You will have to
+                   modify the source and recompile the driver to use it.
+  
+         /v        Sample video vsync timings.
+  
+                   This is a variation on clock drift sampling. It is
+                   triggered by variation in the timings between EGA/VGA
+                   vertical retrace events.
+  
+                   This is an experimental method and is by default
+                   disabled.  You will have to modift the source and
+                   recompile the driver to use it.
+
+         /m        Sample mouse position changes.
+
+                   While the system is idling in DOS or Windows, the
+                   driver will sample changes in mouse position and fast
+                   timings between button presses.
+
+                   Note that the system may become unstable if the mouse
+                   driver is loaded after the noise driver is loaded.
+
+      The /a and /k options have been removed since Version 0.5.
+
+      A sample line using options might look like this:
+
+         device=c:\dos\system\noise.sys /l /m
+
+      The source code can be reassembled to change the default behavior of
+      the driver.  Some of these changes will disable associated options.
+      If the driver claims that one of the above options is invalid, it
+      may be that the option was disabled at assembly time.
+
+      See the technical notes and comments in the source code for more
+      information.
+
+ |    4.1.1 Using NOISE.SYS with Windows 95
+ |
+ |    NOISE.SYS works with no known problems under straight MS-DOS 7.
+ |    However the /d option will force Windows 95 into compatability
+ |    mode because it uses Interrupt 13h, so it is by fault disabled
+ |    if the DOS Version >= 7.
+ |
+ |    This can be overidden using the /o option:
+ |
+ |       device=c:\dos\system\noise.sys /o /d
+ |
+ |    Windows will still be in compatability mode, but access times to
+ |    the disks will be sampled.  Putting a NOISE.SYS= line in the
+ |    WIN.INI file under [Compatability] does not seem to change this.
+ |
+ |    If you do not want Windows to run in compatability mode, but still
+ |    use NOISE.SYS with the /d option, you can try adding "noise.sys"
+ |    to the IOS.SYS file under the [SafeList], but be aware that if
+ |    there is an incompatability with NOISE.SYS and a protected mode
+ |    driver, your hard disk might be trashed.  You add NOISE.SYS to
+ |    the "Safe List" at your own risk: this is NOT recommended!
+ |
+ |    The result of this is that when Windows is activated, no samples
+ |    are taken from Int 13h anyway.  The only reason to do so are if
+ |    you boot in MS-DOS 7 and manually load Windows.
+
+      4.2. Loading the driver from the command line
+
+      Older versions of NOISE.SYS (prior to v0.4.0) which only defined
+      one device could be loaded by dynamic device-driver loading
+      utilities such as Jim Kyle's DEVLOD.
+  
+      As of yet, I have been unable to find a widely-available program
+      which can load drivers such as the current version of NOISE.SYS.
+      Some of the tested utilities aborted with an error, others crashed
+      the system (see the "src/pat/readme" file for more information).
+      I do not have access to PC-DOS 7, which allegedly has a dynamic
+      device loader.
+  
+ |    The source code includes patches to the sources for some of these
+ |    utilities which will enable them to load this driver, as well as
+ |    run under DOS versions 6 and 7.
+
+      Assuming that you have an updated version of DEVLOD or a similar
+      utility, you could use the following from the command prompt, using
+      similar syntax as you would in the CONFIG.SYS file.
+
+         devlod c:\dos\system\noise.sys /i /m
+
+      It is a good idea to use the /i option if you plan to immediately
+      run an application that uses the driver after installing it this
+      way.
+
+      For more information about DEVLOD, see Jim Kyle, "Loading Device
+      Drivers from the DOS Command Line", Dr. Dobb's Journal, November
+      1991, pp. 30-42, (plus listings). A similar article also appears
+      in Jim Kyle's "Undocumented DOS" book.
+
+      Please do not send requests to the authors for this program.  It
+      and similar programs can be found on various ftp-sites.
+
+      4.3. Installation messages
+
+      When installed, the driver will print a message indicating where
+      in memory it was loaded and what interrupts it is latched to. It
+      should also print brief messages about what sampling methods are
+      enabled.
+  
+      If a disabled or non-existent option is given, the driver will
+      print a message and wait for a keypress.
+
+      4.4. Caveats (When and where to load the driver?)
+
+      When and where the driver is loaded will affect its operation.  If
+      you load the driver before another driver or TSR which takes over
+      certain interrupts entirely, NOISE.SYS will not generate any samples
+      from those interrupts.
+
+      Using the /m option before loading the mouse driver (or not loading
+      the mouse driver at all) is useless at best and may cause your system
+      to crash and burn at worst.
+
+      Loading the driver before any disk caching or encryption drivers will
+      generate different types of sampling values than if it is loaded
+      afterwards.  If you have special drivers for CD-ROMs, "flopticals" or
+      large hard disks (over 750M) it is possible that NOISE.SYS will not
+      even sample access times to these devices if it is loaded before the
+      respective drivers.
+
+      The KEYB.SYS driver will take over the keyboard interrupt and leave
+      everything else unhooked.  Some ANSI drivers will allegedly do this
+      as well.  You should load NOISE.SYS afer loading these.
+
+5. Using the driver to generate random numbers
+--------------------------------------------------------------------------
+
+      The simplest way to accumulate random data from the driver is to
+      issue the following command from the DOS prompt:
+
+            copy /a urandom$ lonoise.dat
+
+      This will create a small, random-sized file named "lonoise.dat". It
+      has relatively low-quality randomness because the file was read in
+      text mode, so end-of-line, end-of-file and other control characters
+      are missing.
+
+ |    Note that the above method did not work properly for older versions
+ |    of NOISE.SYS and some DOS versions, particularly under MS-DOS 7.
+ |    The bug appears to have been fixed since Version 0.6.3.
+
+      You can also use the included "sample.exe" utility to generate a
+      binary file of random data:
+  
+            sample hinoise.dat 512 -u
+  
+ |    This will create a file of 512 bytes of random data.  If you have
+ |    a DOS implementation of the Unixish 'dd' (in the GNUDOS package),
+ |    you can try the following instead:
+ |
+ |          dd if=urandom$ of=hinoise count=1
+ |
+ |    Check the src\demo subdirectory for other utilities or libraries
+ |    for using NOISE.SYS.
+
+      5.1. Writing software which uses the driver
+
+ |    You can read a pool of random bytes from the driver as you would from
+ |    any other device.  It is important to remember to open the devices
+ |    RANDOM$ or URANDOM$ in binary mode.
+
+      Note that some languages (such as Turbo Pascal) do not enable one to
+      read from character devices in binary mode.  In such cases inline or
+      external assembler procedures will be needed to access DOS functions
+      directly.
+  
+      The driver will only return random bytes.  If other data types are
+      needed (such as long integers or floating point values) then case is
+      needed to convert bytes to larger word sizes or floating point types.
+
+ |    See the "technote.doc" file for more information.
+
+      5.2. The differences between RANDOM$ and URANDOM$
+
+      Both devices will return a high-quality stream of random bytes.
+      The main difference is that URANDOM$ will return an unlimited
+      number of bytes (as many as are requested, rehashing the random
+      pool as needed), while RANDOM$ will only return as many bytes as
+      it estimates to have reseeded the random pool, theoretically
+      being more secure for key generation.
+
+      5.3. PGP and NOISE.SYS
+
+ |    NOISE.SYS is still a relatively new piece of software, and hence
+ |    many are not entirely comfortable with using it for generating
+ |    public/private key pairs, especially for software such as PGP.
+ |    (The current version of this driver is still in beta.)
+
+      In early 1996 someone posted a note to the cypherpunks list and to
+      the alt.security.pgp newsgroup about having modified PGP 2.6.3i so
+      as to use hardware RNGs and RNG devices for key generation.
+
+      While this is a nice idea, I have not yet seen the modifications
+      made to determine if it samples from /dev/random with the assumption
+      that only a limited amount of bits is returned by the device, or if
+      it expects the device to return a continuous stream of data.
+
+      The above modified version of PGP was intended for use with the
+      Calnet or Newbridge RNG-810 card and the RNG driver for OS/2 by
+      Paul Elliott, which behaves differently from NOISE.SYS.
+  
+ |    I have experimented with using NOISE.SYS as a supplement to
+ |    PGP's "randseed.bin", by usinf the stirfile.c utility to mix
+ |    the file, as well as modifying PGP sources to use an Rng_Driver
+ |    that mixes bytes from the driver with bytes from the random
+ |    seed file.
+ |
+ |    The current version of NOISE.SYS allows data to be written to
+ |    the devices, so it could be used in place of the random seed
+ |    file by setting the RandSeed value in PGP's "config.txt" to
+ |    "\dev\random$" in PGP 2.6.3(i)a or later.
+ |
+ |    Note that PGP also samples keystroke timings, so there is (in
+ |    theory) correlation of data that PGP will re-write back to the
+ |    driver; however the data will be encrypted, and subsequent reads
+ |    from the driver will be hashed, and will be based on an entropy
+ |    pool based on other samples taken by NOISE.SYS.
+ |
+ |    Be wary if you decide to use PGP and NOISE.SYS in this way, as
+ |    subtle bugs or security flaws may crop up.  It's also good to
+ |    keep up-to-date on any PGP-related news.
+
+      5.4. Technical Notes
+  
+      The techie info has been moved to the file "technote.doc".
+
+6. Credits
+--------------------------------------------------------------------------
+
+      The following people have contributed advice, comments, suggestions,
+      utilities, pointers to information, or source code for this driver
+      or the testing of it in some way:
+
+            Ralf Brown <ralf@pobox.com>
+            "Prof. Pat" Patrick Emin <af886@ccn.cs.dal.ca>
+            Mikael af Enehielm <mikael@unigraf.pp.fi>
+            Peter Gutmann <pgut01@cs.aukland.ac.nz>
+            Yih-Chun Hu <yihchun@u.washington.edu>
+            Christian Ludloff <ludloff@anet-dfw.com>
+            Perry E. Metzger <perry@piermont.com>
+            Colin Plumb <colin@nyx.net>
+            Theodore T'so <tytso@mit.edu>
+            David Wagner <daw@cs.berkeley.edu>
+            Will Ware <wware@world.std.com>
+
+            ...and various others on the Coderpunks and Cypherpunks
+               lists and sci.crypt and comp.lang.asm.x86 newsgroups.
+
+      Colin Plumb deserves much thanks for proof-reading of the source,
+      suggestions, and large code snippets.
+
+      Note that any bugs in the driver are of my own doing, and not Colin's
+      or anyone else's.
+
+            -- Rob Rothenburg Walking-Owl <wlkngowl@unix.asb.com>
+
