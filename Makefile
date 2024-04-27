@@ -98,7 +98,7 @@ mbedtlsclean:
 
 zip:
 	rm -f $(RELZIP)
-	zip -9 -r $(RELZIP) $(EXE) HTTPDOS.INI WATTCP.CFG CWSDPMI.EXE *.md static/
+	zip -9 -r $(RELZIP) $(EXE) HTTPDOS.INI WATTCP.CFG CWSDPMI.EXE *.md rootCA.* server.* static/
 
 .PHONY: clean distclean init zip
 
