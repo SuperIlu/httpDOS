@@ -8,6 +8,16 @@ TLS is provided by https://github.com/Mbed-TLS/mbedtls
 TCP/IP stack is https://www.watt-32.net/
 INI file reading is provided by https://github.com/rxi/ini
 
+## Quick start
+- Run some kind of DOS (MS-DOS, FreeDOS, ???)
+- Extract the release ZIP file to e.g. `C:\HTTPDOS`
+- Load a packet driver for your network card (Packet drivers can e.g. be found on packetdriversdos.net or on crynwr.com or www.georgpotthast.de)
+- Change to `C:\HTTPDOS` and run `HTTPDOS.EXE`
+- Watch the output for the IP-address (the default `WATTCP.CFG` uses DHCP)
+- Connect to `https://<your ip address>/`
+- Allow the browser to connect to a site with a self-signed certificate
+- Be amazed :)
+
 ## Configuration
 See `HTTPDOS.INI` for an example configuration.
 
