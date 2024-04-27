@@ -1,7 +1,7 @@
 # HTTPS Webserver for MS-DOS
 This is a minimal HTTPS capable webserver for MS-DOS.
 
-It is not in real working condition, connections only succeed when EtherDFS is running in the background and I have no idea why...
+It is not in real working condition, it creates a "double fault" when exiting with CTRL-C (I guess some DOS memory is corrupted when running).
 
 HTTP code was taken from https://github.com/starnight/MicroHttpServer
 TLS is provided by https://github.com/Mbed-TLS/mbedtls

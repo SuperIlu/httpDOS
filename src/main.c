@@ -104,7 +104,7 @@ int main(void) {
 
     ini_t *ini = ini_load("HTTPDOS.INI");
     if (!ini) {
-        LOGF("Could not load HTTPDOS.INI!");
+        LOGF("Could not load HTTPDOS.INI!\n");
         exit(1);
     }
 

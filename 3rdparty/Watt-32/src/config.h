@@ -102,7 +102,7 @@
     defined(DMC386) || defined(_WIN32) || defined(_WIN64)
   #define USE_ECHO_DISC
   #define USE_RARP
-  #define USE_IPV6
+  // #define USE_IPV6
   #define USE_IDNA
   #define USE_TCP_MD5
   #define USE_GZIP

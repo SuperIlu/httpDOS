@@ -10,15 +10,15 @@ net_sockets.o: net_sockets.c common.h ../include/mbedtls/config.h \
  ../include/mbedtls/asn1.h ../include/mbedtls/x509_crl.h \
  ../include/mbedtls/dhm.h ../include/mbedtls/ecdh.h \
  ../include/mbedtls/error.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/socket.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/w32api.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/werrno.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/djgpp.err \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/wtypes.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/wtime.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/whide.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/netinet/in.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/pack_on.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/sys/pack_off.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/arpa/inet.h \
- /mnt/e/_DEVEL/HttpDos/3rdparty/Watt-32/inc/netdb.h
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/socket.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/w32api.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/werrno.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/djgpp.err \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/wtypes.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/wtime.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/whide.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/netinet/in.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/pack_on.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/sys/pack_off.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/arpa/inet.h \
+ /mnt/e/_DEVEL/GitHub/httpDOS/3rdparty/Watt-32/inc/netdb.h

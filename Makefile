@@ -15,7 +15,7 @@ LIB_WATT	= $(WATT32)/lib/libwatt.a
 LIB_MBEDTLS = $(MBEDTLS)/library/libmbedtls.a
 
 # compiler
-CDEF     = -DENABLE_STATIC_FILE=1 -DCERT_FILES=1
+CDEF     = -DENABLE_STATIC_FILE=1 -DCERT_FILES=1 -DLINUX=0
 CFLAGS   = -MMD -Wall -std=gnu99 -O2 -march=i386 -mtune=i586 -ffast-math -fomit-frame-pointer $(INCLUDES) -fgnu89-inline -Wmissing-prototypes $(CDEF)
 INCLUDES = \
 	-I$(realpath ./src) \

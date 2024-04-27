@@ -49,17 +49,17 @@ bool HTTPServerInit(HTTPServer *srv, ini_t *inifile) {
 
     srv->static_folder = (char *)ini_get(inifile, "dirs", "static");
     if (!srv->static_folder) {
-        LOGF("No static folder configured!");
+        LOGF("No static folder configured!\n");
         return false;
     }
 
     int debug = 0;
     ini_sget(inifile, "logging", "level", "%d", &debug);
     mbedtls_debug_set_threshold(debug);
-    LOGF("Loglevel is %d", debug);
+    LOGF("Loglevel is %d\n", debug);
 
     // 1. Load the certificates and private RSA key
-    LOGF("Loading the server cert. and key...");
+    LOGF("Loading the server cert. and key...\n");
 #if CERT_FILES == 1
     const char *val;
 
@@ -265,31 +265,37 @@ static void _WriteSock(HTTPServer *srv) {
     ssize_t n;
 
     // 7. Write to client
-    const unsigned char *buf = hr->res._buf + hr->windex;
-    size_t len = hr->res._index - hr->windex;
-    n = mbedtls_ssl_write(&srv->ssl, buf, len);
-    if (n > 0) {
-        /* Send some bytes and send left next loop. */
-        hr->windex += n;
-        if (hr->res._index > hr->windex)
-            hr->work_state = WRITING_SOCKET;
-        else
+    while (true) {
+        const unsigned char *buf = hr->res._buf + hr->windex;
+        size_t len = hr->res._index - hr->windex;
+        n = mbedtls_ssl_write(&srv->ssl, buf, len);
+        LOGF("ssl_write(%ld) := %ld\n", len, n);
+        if (n > 0) {
+            /* Send some bytes and send left next loop. */
+            hr->windex += n;
+            if (hr->res._index > hr->windex) {
+                hr->work_state = WRITING_SOCKET;
+            } else {
+                hr->work_state = WRITEEND_SOCKET;
+            }
+            continue;
+        } else if (n == 0) {
+            /* Writing is finished. */
             hr->work_state = WRITEEND_SOCKET;
-    } else if (n == 0) {
-        /* Writing is finished. */
-        hr->work_state = WRITEEND_SOCKET;
-    } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-        /* Send with non-blocking socket. */
-        hr->windex += hr->res._index - hr->windex;
-        hr->work_state = WRITING_SOCKET;
-    } else {
-        /* Send with error. */
-        if (n == MBEDTLS_ERR_NET_CONN_RESET) {
-            LOGF(" failed: peer closed the connection\n");
-        } else if (n != MBEDTLS_ERR_SSL_WANT_READ && n != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            LOGF("failed: mbedtls_ssl_write returned %ld\n", n);
+        } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+            /* Send with non-blocking socket. */
+            hr->windex += hr->res._index - hr->windex;
+            hr->work_state = WRITING_SOCKET;
+        } else {
+            /* Send with error. */
+            if (n == MBEDTLS_ERR_NET_CONN_RESET) {
+                LOGF(" failed: peer closed the connection\n");
+            } else if (n != MBEDTLS_ERR_SSL_WANT_READ && n != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                continue;  // call SSL again
+            }
+            hr->work_state = CLOSE_SOCKET;
         }
-        hr->work_state = CLOSE_SOCKET;
+        break;
     }
 }
 

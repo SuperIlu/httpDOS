@@ -87,11 +87,13 @@ static uint8_t _ReadStaticFiles(HTTPServer *srv, HTTPReqMessage *req, HTTPResMes
     if ((depth >= 0) && (uri[i - 1] != '/')) {
         /* Try to open and load the static file. */
         memcpy(path + strlen(srv->static_folder), uri, strlen(uri));
-        fp = fopen(path, "r");
+        LOGF("Path    : %s\n", path);
+        fp = fopen(path, "rb");
         if (fp != NULL) {
             fseek(fp, 0, SEEK_END);
             size = ftell(fp);
             fseek(fp, 0, SEEK_SET);
+            LOGF("Size    : %d\n", size);
 
             if (size < srv->maxsize) {
                 /* Build HTTP OK header. */
@@ -102,6 +104,7 @@ static uint8_t _ReadStaticFiles(HTTPServer *srv, HTTPReqMessage *req, HTTPResMes
                 /* Build HTTP body. */
                 n = fread(res->_buf + i, 1, size, fp);
                 i += n;
+                LOGF("Read    : %ld\n", n);
 
                 res->_index = i;
 
@@ -110,6 +113,7 @@ static uint8_t _ReadStaticFiles(HTTPServer *srv, HTTPReqMessage *req, HTTPResMes
             fclose(fp);
         }
     }
+    LOGF("Found   : %d\n", found);
 
     return found;
 }
