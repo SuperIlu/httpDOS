@@ -9,7 +9,7 @@
 THIRDPARTY	= 3rdparty
 WATT32		= $(THIRDPARTY)/Watt-32
 INI			= $(THIRDPARTY)/ini-20220806/src
-MBEDTLS		= $(THIRDPARTY)/mbedtls-2.28.3
+MBEDTLS		= $(THIRDPARTY)/mbedtls-2.28.8
 
 LIB_WATT	= $(WATT32)/lib/libwatt.a
 LIB_MBEDTLS = $(MBEDTLS)/library/libmbedtls.a
@@ -95,6 +95,7 @@ wattclean:
 
 mbedtlsclean:
 	$(MAKE) -C $(MBEDTLS) -f Makefile clean
+	find $(MBEDTLS) -name \*.d -exec rm {} +
 
 zip:
 	rm -f $(RELZIP)
