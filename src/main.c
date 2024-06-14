@@ -38,14 +38,46 @@ FILE *logfile;  //!< file for log output.
         }                                               \
     }
 
-int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen) {
-    FILE *randstream;
+#if LINUX == 0
+static int poll_noise_sys(void *data, unsigned char *output, size_t len, size_t *olen) {
+    FILE *file;
+    size_t ret, left = len;
+    unsigned char *p = output;
+    ((void)data);
 
+    *olen = 0;
+
+    file = fopen("/dev/urandom$", "rb");
+    if (file == NULL) {
+        return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+    }
+
+    while (left > 0) {
+        /* /dev/random can return much less than requested. If so, try again */
+        ret = fread(p, 1, left, file);
+        if (ret == 0 && ferror(file)) {
+            fclose(file);
+            return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+        }
+
+        p += ret;
+        left -= ret;
+        sleep(1);
+    }
+    fclose(file);
+    *olen = len;
+
+    return 0;
+}
+#endif
+
+int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen) {
     LOGF("%ld bytes random data requested\n", len);
 
 #if LINUX == 0
-    if ((randstream = fopen("/dev/urandom$", "rb")) <= 0) {
-        LOGF("using fallback RNG\n");
+    int noise_ret = poll_noise_sys(data, output, len, olen);
+    if (noise_ret != 0) {
+        LOGF("using fallback pseudo RNG\n");
         uint8_t rnd_buff[5 * 4];
         unsigned int pos = 0;
         rnd_buff[pos++] = inportb(0x40);  // PIT timer 0 at ports 40h-43h
@@ -62,20 +94,36 @@ int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t 
         memcpy(output, rnd_buff, *olen);
     } else {
         LOGF("using NOISE.SYS\n");
-        /* ----- read bytes from the random stream ----- */
-        *olen = fread(output, 1, len, randstream);
-        fclose(randstream);
     }
 #else
-    if ((randstream = fopen("/dev/urandom", "rb")) <= 0) {
-        LOGF("random error\n");
-        exit(1);
-    } else {
-        LOGF("using /dev/urandom\n");
-        /* ----- read bytes from the random stream ----- */
-        *olen = fread(output, 1, len, randstream);
-        fclose(randstream);
+    FILE *file;
+    size_t ret, left = len;
+    unsigned char *p = output;
+    ((void)data);
+
+    *olen = 0;
+
+    file = fopen("/dev/random", "rb");
+    if (file == NULL) {
+        return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
     }
+
+    while (left > 0) {
+        /* /dev/random can return much less than requested. If so, try again */
+        ret = fread(p, 1, left, file);
+        if (ret == 0 && ferror(file)) {
+            fclose(file);
+            return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+        }
+
+        p += ret;
+        left -= ret;
+        sleep(1);
+    }
+    fclose(file);
+    *olen = len;
+
+    return 0;
 #endif
     LOGF("%ld bytes random data delivered\n", *olen);
 
@@ -84,6 +132,10 @@ int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t 
 }
 
 int main(void) {
+    LOG("This is httpDOS 0.0.3 (https://github.com/SuperIlu/httpDOS)\n");
+    LOG("(c) 2024 by Andre Seidelt <superilu@yahoo.com> and others.\n");
+    LOG("See README.md for detailed licensing information.\n");
+
 #if LINUX == 0
     char buffer[1024];
     _watt_do_exit = 0;
